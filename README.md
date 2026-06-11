@@ -1,99 +1,67 @@
-# SenAI Agentic CRM Intelligence Platform
+# Architecture Design Justification
 
-Production-oriented take-home submission for the SenAI Advanced Technical Assessment.
+## FastAPI Backend
 
-## What Is Included
+FastAPI was selected as the backend framework because it provides high-performance APIs, automatic OpenAPI documentation, strong type validation through Pydantic, and seamless integration with AI workflows. It serves as the central orchestration layer for email ingestion, classification, analytics, RAG retrieval, and autonomous agent operations.
 
-- FastAPI backend with ingestion, deduplication, thread reconstruction, heuristic classification, structured LLM abstraction, RAG, autonomous triage agent, audit logs, contacts, analytics, and web intelligence.
-- React/TypeScript/Vite dashboard with mission control inbox, thread workspace, reasoning traces, RAG context, web intelligence, and analytics.
-- PostgreSQL schema via SQLAlchemy and Alembic, Docker Compose, seed scripts, simulator, KB documents, and tests.
-- Full planning artifact in `docs/implementation_plan.md`.
+## PostgreSQL Database
 
-## Dataset Analysis Note
+PostgreSQL is used as the primary system of record for storing emails, threads, contacts, classifications, analytics, and audit logs. A relational database is appropriate because email conversations, contacts, and thread relationships require structured querying and transactional consistency.
 
-The PDF says the dataset has 30 threads and describes Alice/Bob as 5/4 emails. The uploaded `email-data-advanced.json` has 60 emails across 47 distinct `thread_id`s; Alice has 4 emails and Bob outage has 3 outage-thread emails. The implementation uses the uploaded JSON as source of truth and also retrieves sender-level history for Bob.
+## Redis and Celery
 
-## Quick Start
+Redis acts as the Celery broker and backend. Celery enables asynchronous processing of email intelligence workflows so that ingestion requests remain responsive while background tasks execute independently.
 
-```bash
-docker compose up --build
-```
+## ChromaDB and RAG
 
-Then open:
+The assessment requires policy-aware and evidence-based reasoning. ChromaDB is used as the vector database for Retrieval-Augmented Generation (RAG). Internal knowledge base documents are embedded and retrieved during analysis, allowing the agent to ground decisions using company policies and operational guidelines.
 
-- Backend Swagger: `http://localhost:8000/docs`
-- Frontend dashboard: `http://localhost:5173`
+A deterministic SQL-backed vector fallback is included to ensure portability and offline execution during evaluation.
 
-Seed and replay:
+## Heuristic Classification Layer
 
-```bash
-docker compose exec backend python /scripts/email_simulator.py --file /email-data-advanced.json --base-url http://localhost:8000 --speed 10
-```
+A deterministic heuristic engine performs the first stage of classification. It detects spam, security threats, compliance requests, complaints, billing issues, feature requests, and bug reports. This layer provides explainable and reliable classification before invoking higher-level reasoning.
 
-Local backend without Docker:
+## LLM Abstraction Layer
 
-```bash
-cd backend
-pip install -r requirements.txt
-$env:PYTHONPATH="."
-uvicorn app.main:app --reload
-```
+The platform uses a structured LLM abstraction layer. GPT-5.5 can be configured through environment variables, while an offline deterministic fallback guarantees functionality when no API key is available. This design avoids coupling core functionality to external model availability.
 
-Then seed:
+## Autonomous Triage Agent
 
-```bash
-$env:PYTHONPATH="backend"
-python scripts/seed_dataset.py
-```
+The Autonomous Triage Agent combines classification results, thread history, sender history, RAG evidence, and policy rules to determine the appropriate action. The agent decides whether an email should be replied to automatically, escalated to a human, flagged for compliance review, or routed to security teams.
 
-## Environment Variables
+## Safety-First Automation
 
-- `DATABASE_URL`: defaults to local SQLite; Docker uses PostgreSQL.
-- `OPENAI_API_KEY`: optional. Without it, deterministic offline classification is used.
-- `OPENAI_MODEL`: defaults to `gpt-5.5` per assessment recommendation and is configurable.
-- `REDIS_URL`: Celery broker/backend.
-- `OFFLINE_MODE`: keeps scraping and LLM behavior deterministic for evaluation.
+The platform intentionally prevents autonomous replies for high-risk scenarios including:
 
-## Safety Gates
+* Spam messages
+* Security incidents
+* Ransomware threats
+* Legal notices
+* GDPR requests
+* Critical urgency emails
 
-The agent never auto-replies to:
+These scenarios require human oversight and escalation.
 
-- Spam
-- Ransomware or data exfiltration threats
-- Legal threats and cease-and-desist notices
-- GDPR Article 20 requests
-- Any Critical urgency email
+## Web Intelligence
 
-The blocked cases still receive a proposed human-review draft when useful, with legal/security/compliance escalation.
+Web Intelligence enriches customer context and reputation analysis. To maintain deterministic behavior during evaluation, cached fixtures and offline execution modes are used when external scraping is unavailable.
 
-## Key Scenario Behavior
+## Auditability and Explainability
 
-- Bob `msg_060`: retrieves sender history, SLA policy, account renewal hold, legal flag, holding draft, escalation trace.
-- Karen `msg_033`: detects repeated negative emails, reputation threat, refund/retention/escalation policies, web intelligence.
-- GDPR `msg_052`: compliance/legal flag, 30-day statutory window draft, compliance ticket intent, no generic auto-reply.
-- Ransomware `msg_038`: Critical security escalation, no attacker reply.
-- Alice `msg_041`: pricing policy retrieves non-profit and pro-rata billing context.
-- Nadia `msg_054`: Critical bug, engineering ticket, human escalation.
-- Chatbot misinformation `msg_056`: refund policy retrieval, discrepancy acknowledgement, no liability admission.
-- BigCorp and HIPAA: high-value enterprise/compliance routing.
+Every significant decision can be traced through reasoning logs, RAG evidence, escalation records, and audit logs. This ensures transparency and supports enterprise governance requirements.
 
-## Trade-offs
+## React Mission Control Dashboard
 
-- Chroma is included in Docker, while a deterministic SQL-backed vector fallback keeps tests portable and offline.
-- The LLM adapter is interface-first. This avoids coupling safety tests to external model availability.
-- Web intelligence uses cache and fixtures in offline mode so scraper failures do not block triage.
-- Sender-level history is used in addition to `thread_id` because the dataset contains related Bob emails in separate threads.
+The React + TypeScript + Vite frontend provides a unified Mission Control interface for reviewing customer threads, reasoning traces, RAG evidence, analytics, web intelligence, and escalation decisions. This enables operators to understand not only what decision was made but also why it was made.
 
-## Verification
+## Key Trade-offs
 
-```bash
-$env:PYTHONPATH="backend"
-pytest
-```
+* ChromaDB provides lightweight local RAG at the expense of enterprise-scale vector capabilities.
+* The heuristic-first approach improves reliability and explainability but increases architectural complexity.
+* Offline fallbacks improve portability but provide less intelligence than live LLM integrations.
+* Safety-first automation reduces business risk while increasing the number of human escalations.
 
-Generate OpenAPI:
+## Result
 
-```bash
-$env:PYTHONPATH="backend"
-python scripts/export_openapi.py
-```
+The final architecture satisfies the assessment requirements by providing email ingestion, thread reconstruction, intelligent classification, RAG-powered reasoning, autonomous triage, human escalation workflows, analytics, auditability, explainability, and production-ready deployment through Docker Compose.
